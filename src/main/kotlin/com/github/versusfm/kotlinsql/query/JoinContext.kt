@@ -4,13 +4,13 @@ import co.streamx.fluent.extree.expression.LambdaExpression
 import com.github.versusfm.kotlinsql.ast.FromClause
 import com.github.versusfm.kotlinsql.ast.SelectClause
 import com.github.versusfm.kotlinsql.ast.WhereClause
-import com.github.versusfm.kotlinsql.util.ExpressionBiFunction
-import com.github.versusfm.kotlinsql.util.ExpressionExtension
+import com.github.versusfm.kotlinsql.util.func.ExpressionBiFunction
+import com.github.versusfm.kotlinsql.util.func.ExpressionExtension
 import com.github.versusfm.kotlinsql.util.JoinType
 
 class JoinContext<Parent, T>(val parent: QueryContext<Parent>, private val type: Class<T>, val joinType: JoinType) : QueryContext<T>() {
 
-    private val targetName = resolveTableName(type)
+    private var targetName = resolveTableName(type)
     private val join = FromClause.JoinTable(targetName, joinType)
     init {
         parent.addFrom(join)
@@ -18,21 +18,24 @@ class JoinContext<Parent, T>(val parent: QueryContext<Parent>, private val type:
 
 
     fun on(selector: ExpressionBiFunction<Parent, T, Boolean>): JoinContext<Parent, T> {
-        val lambda = LambdaExpression.parse(selector)
+        val method = selector::class.java.methods.first { it.name == "invoke" }
+        val lambda = LambdaExpression.parseMethod(method, selector)
         val conditionClause = resolveWhereExpression(this, lambda)
         join.condition = conditionClause
         return this
     }
 
     override fun <R> select(selector: ExpressionExtension<T, R>): QueryContext<T> {
-        val lambda = LambdaExpression.parse(selector)
+        val method = selector::class.java.methods.first { it.name == "invoke" }
+        val lambda = LambdaExpression.parseMethod(method, selector)
         val target = resolveSelectExpression(this, lambda)
-        target.forEach { parent.addSelect(it) }
+        target.forEach { parent.addSelect(SelectClause.Value(it)) }
         return this
     }
 
     override fun <R> where(selector: ExpressionExtension<T, R>): QueryContext<T> {
-        val lambda = LambdaExpression.parse(selector)
+        val method = selector::class.java.methods.first { it.name == "invoke" }
+        val lambda = LambdaExpression.parseMethod(method, selector)
         val condition = resolveWhereExpression(this, lambda)
         parent.addWhere(WhereClause.Condition(condition))
         return this
@@ -63,6 +66,10 @@ class JoinContext<Parent, T>(val parent: QueryContext<Parent>, private val type:
 
     override fun addFrom(fromClause: FromClause) {
         parent.addFrom(fromClause)
+    }
+
+    override fun setAlias(alias: String) {
+        this.targetName = alias
     }
 
     override fun compile(): String {

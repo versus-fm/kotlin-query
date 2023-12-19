@@ -14,9 +14,14 @@ import com.github.versusfm.kotlinsql.annotation.SqlFunction
 import com.github.versusfm.kotlinsql.annotation.Table
 import com.github.versusfm.kotlinsql.ast.*
 import com.github.versusfm.kotlinsql.util.*
+import com.github.versusfm.kotlinsql.util.func.ExpressionBiExtension
+import com.github.versusfm.kotlinsql.util.func.ExpressionExtension
+import kotlinx.metadata.jvm.KotlinClassMetadata
 import java.lang.reflect.Field
 import java.lang.reflect.Method
 import kotlin.jvm.internal.Intrinsics
+import kotlin.reflect.jvm.ExperimentalReflectionOnLambdas
+import kotlin.reflect.jvm.reflect
 
 abstract class QueryContext<T> {
     companion object {
@@ -46,27 +51,22 @@ abstract class QueryContext<T> {
             }
             return stringBuilder.toString()
         }
+
+        // Ugly hack to convince kotlin obviously incorrect code works
+        internal fun <T> T?.allowNull(): T = this as T
     }
 
-    fun <R> joinWith(joinType: JoinType, type: Class<R>, innerContext: ExpressionFunction<JoinContext<T, R>, Unit>): QueryContext<T> {
+    @OptIn(ExperimentalReflectionOnLambdas::class)
+    fun <R> join(joinType: JoinType, type: Class<R>, innerContext: ExpressionBiExtension<JoinContext<T, R>, R, Unit>): QueryContext<T> {
         val joinContext = JoinContext<T, R>(this, type, joinType)
-        innerContext.apply(joinContext)
-        return this
-    }
-
-    fun <R> join(joinType: JoinType, type: Class<R>, innerContext: ExpressionExtension<JoinContext<T, R>, Unit>): QueryContext<T> {
-        val joinContext = JoinContext<T, R>(this, type, joinType)
+        val instance: R? = null
         with(innerContext) {
-            joinContext.invoke()
+            joinContext.invoke(instance.allowNull())
         }
         return this
     }
-    fun <R> innerJoin(type: Class<R>, innerContext: ExpressionExtension<JoinContext<T, R>, Unit>): QueryContext<T> {
+    fun <R> innerJoin(type: Class<R>, innerContext: ExpressionBiExtension<JoinContext<T, R>, R, Unit>): QueryContext<T> {
         return join(JoinType.Inner, type, innerContext)
-    }
-
-    fun <R> innerJoinWith(type: Class<R>, innerContext: ExpressionFunction<JoinContext<T, R>, Unit>): QueryContext<T> {
-        return joinWith(JoinType.Inner, type, innerContext)
     }
 
     abstract fun <R> select(selector: ExpressionExtension<T, R>): QueryContext<T>
@@ -79,32 +79,25 @@ abstract class QueryContext<T> {
     internal abstract fun addSelect(selectClause: SelectClause)
     internal abstract fun addWhere(whereClause: WhereClause)
     internal abstract fun addFrom(fromClause: FromClause)
+    internal abstract fun setAlias(alias: String)
 
     internal fun <K, L, R> resolveSelectExpression(context: QueryContext<R>, selector: ExpressionExtension<K, L>): List<SelectClause> {
-        val lambda = LambdaExpression.parse(selector)
-        return resolveSelectExpression(context, lambda)
+        val method = selector::class.java.methods.first { it.name == "invoke" }
+        val lambda = LambdaExpression.parseMethod(method, selector)
+        return resolveSelectExpression(context, lambda).map { SelectClause.Value(it) }
     }
 
-    internal fun <R> resolveSelectExpression(context: QueryContext<R>, expression: LambdaExpression<*>): List<SelectClause> {
+    internal fun <R> resolveSelectExpression(context: QueryContext<R>, expression: LambdaExpression<*>): List<ValueNode> {
         when (val body = expression.body) {
-            is InvocationExpression -> when (val target = body.target) {
-                is MemberExpression -> when (val member = target.member) {
-                    is Method -> {
-                        val instance = target.instance
-                        val innerMethod = LambdaExpression.parseMethod(member, instance)
-                        val valueNodes = resolveColumnSelector(context, innerMethod)
-                        return valueNodes.map { SelectClause.Value(it) }
-                    }
-                }
-                is LambdaExpression<*> -> return resolveSelectExpression(context, target)
-            }
+            is InvocationExpression -> return resolveColumnSelector(context, body)
             else -> TODO()
         }
         TODO()
     }
 
     internal fun <K, L, R> resolveWhereExpression(context: QueryContext<R>, selector: ExpressionExtension<K, L>): WhereClause {
-        val lambda = LambdaExpression.parse(selector)
+        val method = selector::class.java.methods.first { it.name == "invoke" }
+        val lambda = LambdaExpression.parseMethod(method, selector)
         return WhereClause.Condition(resolveWhereExpression(context, lambda))
     }
 
@@ -121,6 +114,12 @@ abstract class QueryContext<T> {
                 is LambdaExpression<*> ->  {
                     return resolveInnerWhereExpression(context, target.body, ContextValues(body.arguments.filterIsInstance(ConstantExpression::class.java)))
                 }
+            }
+            is UnaryExpression -> {
+                if (body.expressionType == ExpressionType.Convert) {
+                    return resolveInnerWhereExpression(context, body.first)
+                }
+                TODO()
             }
             else -> TODO()
         }
@@ -220,6 +219,7 @@ abstract class QueryContext<T> {
             }
             is BinaryExpression -> ValueNode.BooleanCondition(resolveBinaryExpression(context, expression, contextValues))
             is UnaryExpression -> resolveColumnSelector(context, expression).first()
+            is MemberExpression -> ValueNode.NamedParam(getInstance(context, expression))
             else -> TODO()
         }
     }
@@ -238,7 +238,11 @@ abstract class QueryContext<T> {
                 when (val member = expression.member) {
                     is Field -> {
                         member.isAccessible = true
-                        return member.get(expression.instance)
+                        if (expression.instance == null) {
+                            return member.get(null)
+                        } else {
+                            return member.get(getInstance(context, expression.instance))
+                        }
                     }
                 }
             }
@@ -279,6 +283,7 @@ abstract class QueryContext<T> {
                     return listOf(ValueNode.TableColumn(tableName, columnName))
                 }
             }
+            is LambdaExpression<*> -> return resolveSelectExpression(context, target)
         }
         TODO()
     }
@@ -305,6 +310,16 @@ abstract class QueryContext<T> {
         when (val body = expression.body) {
             is InvocationExpression -> return resolveColumnSelector(context, body)
             is MemberExpression -> return resolveColumnSelector(context, body)
+            is UnaryExpression -> {
+                if (body.expressionType == ExpressionType.Convert) {
+                    return when (val innerBody = body.first) {
+                        is InvocationExpression -> resolveColumnSelector(context, innerBody)
+                        is MemberExpression -> resolveColumnSelector(context, innerBody)
+                        else -> TODO()
+                    }
+                }
+                TODO()
+            }
         }
         TODO()
     }

@@ -116,11 +116,11 @@ class QueryTests {
     fun testNestedJoin() {
         val query = from(Person::class.java) {
             select { all(id, firstName, lastName) }
-            innerJoin(Occupation::class.java) {
+            innerJoin(Occupation::class.java) { occ ->
                 on { person, occupation -> person.id == occupation.personId }
                 innerJoin(Location::class.java) {
                     on { occupation, location -> occupation.id == location.occupationId }
-                    where { name == lower("testLocation") }
+                    where { name == occ.metadata }
                     select { name }
                 }
             }

@@ -1,10 +1,10 @@
 package com.github.versusfm.kotlinsql.query
 
 import com.github.versusfm.kotlinsql.ast.*
-import com.github.versusfm.kotlinsql.util.ExpressionExtension
+import com.github.versusfm.kotlinsql.util.func.ExpressionExtension
 import java.util.concurrent.ConcurrentHashMap
 
-open class SelectContext<T>(protected val type: Class<T>, protected val tableName: String) : QueryContext<T>() {
+open class SelectContext<T>(protected val type: Class<T>, protected var tableName: String) : QueryContext<T>() {
     private val select: SelectNode = SelectNode()
     private var paramIndex: Int = 0
     private var paramValues = ConcurrentHashMap<Int, Pair<String, Any>>()
@@ -63,6 +63,10 @@ open class SelectContext<T>(protected val type: Class<T>, protected val tableNam
 
     override fun addFrom(fromClause: FromClause) {
         select.fromClauses.add(fromClause)
+    }
+
+    override fun setAlias(alias: String) {
+        this.tableName = alias
     }
 
     override fun compile(): String {
