@@ -41,6 +41,11 @@ class JoinContext<Parent, T>(val parent: QueryContext<Parent>, private val type:
         return this
     }
 
+    override fun <R> selectAll(): QueryContext<T> {
+        parent.addSelect(SelectClause.All(this.targetName))
+        return this;
+    }
+
     override fun <R: Any> putParamValue(value: R): String {
         return parent.putParamValue(value)
     }

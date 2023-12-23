@@ -13,6 +13,7 @@ dependencies {
     implementation("org.apache.bcel:bcel:6.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-metadata-jvm:0.7.0")
     implementation("co.streamx.fluent:ex-tree:2.8.0")
+    implementation("com.github.jasync-sql:jasync-postgresql:2.2.0")
     implementation(kotlin("reflect"))
     testImplementation(kotlin("test"))
 }

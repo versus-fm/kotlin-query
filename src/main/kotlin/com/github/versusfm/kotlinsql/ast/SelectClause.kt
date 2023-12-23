@@ -8,4 +8,9 @@ sealed interface SelectClause : QueryNode {
             return value.compile(context)
         }
     }
+    data class All(val table: String) : SelectClause {
+        override fun compile(context: QueryContext<*>): String {
+            return "\"$table\".*"
+        }
+    }
 }

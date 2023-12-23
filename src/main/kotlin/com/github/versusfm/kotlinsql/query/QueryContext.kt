@@ -19,6 +19,7 @@ import com.github.versusfm.kotlinsql.util.func.ExpressionExtension
 import kotlinx.metadata.jvm.KotlinClassMetadata
 import java.lang.reflect.Field
 import java.lang.reflect.Method
+import java.lang.reflect.Parameter
 import kotlin.jvm.internal.Intrinsics
 import kotlin.reflect.jvm.ExperimentalReflectionOnLambdas
 import kotlin.reflect.jvm.reflect
@@ -38,6 +39,13 @@ abstract class QueryContext<T> {
                 return field.getAnnotation(Column::class.java).value
             }
             return formatSnakeCaseName(field.name)
+        }
+
+        internal fun resolveColumnName(parameter: Parameter): String {
+            if (parameter.isAnnotationPresent(Column::class.java)) {
+                return parameter.getAnnotation(Column::class.java).value
+            }
+            return formatSnakeCaseName(parameter.name)
         }
 
         internal fun formatSnakeCaseName(identifier: String): String {
@@ -70,6 +78,7 @@ abstract class QueryContext<T> {
     }
 
     abstract fun <R> select(selector: ExpressionExtension<T, R>): QueryContext<T>
+    abstract fun <R> selectAll(): QueryContext<T>
     abstract fun <R> where(selector: ExpressionExtension<T, R>): QueryContext<T>
 
     internal abstract fun <R: Any> putParamValue(value: R): String

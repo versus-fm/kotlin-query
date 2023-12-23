@@ -32,6 +32,11 @@ open class SelectContext<T>(protected val type: Class<T>, protected var tableNam
         return this
     }
 
+    override fun <R> selectAll(): QueryContext<T> {
+        select.selectClauses.add(SelectClause.All(tableName))
+        return this
+    }
+
 
     override fun <R: Any> putParamValue(value: R): String {
         if (parent != null) {
