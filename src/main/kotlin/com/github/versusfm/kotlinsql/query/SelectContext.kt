@@ -3,6 +3,7 @@ package com.github.versusfm.kotlinsql.query
 import com.github.versusfm.kotlinsql.ast.*
 import com.github.versusfm.kotlinsql.util.func.ExpressionExtension
 import java.util.concurrent.ConcurrentHashMap
+import java.util.stream.Collectors
 
 open class SelectContext<T>(protected val type: Class<T>, protected var tableName: String) : QueryContext<T>() {
     private val select: SelectNode = SelectNode()
@@ -32,13 +33,13 @@ open class SelectContext<T>(protected val type: Class<T>, protected var tableNam
         return this
     }
 
-    override fun <R> selectAll(): QueryContext<T> {
+    override fun selectAll(): QueryContext<T> {
         select.selectClauses.add(SelectClause.All(tableName))
         return this
     }
 
 
-    override fun <R: Any> putParamValue(value: R): String {
+    override fun <R : Any> putParamValue(value: R): String {
         if (parent != null) {
             return parent!!.putParamValue(value)
         }
@@ -72,6 +73,12 @@ open class SelectContext<T>(protected val type: Class<T>, protected var tableNam
 
     override fun setAlias(alias: String) {
         this.tableName = alias
+    }
+
+    override fun getParamValues(): Map<String, Any> {
+        return paramValues.values
+            .stream()
+            .collect(Collectors.toMap({ it.first }) { it.second })
     }
 
     override fun compile(): String {

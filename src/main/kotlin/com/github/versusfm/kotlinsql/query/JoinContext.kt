@@ -8,10 +8,12 @@ import com.github.versusfm.kotlinsql.util.func.ExpressionBiFunction
 import com.github.versusfm.kotlinsql.util.func.ExpressionExtension
 import com.github.versusfm.kotlinsql.util.JoinType
 
-class JoinContext<Parent, T>(val parent: QueryContext<Parent>, private val type: Class<T>, val joinType: JoinType) : QueryContext<T>() {
+class JoinContext<Parent, T>(val parent: QueryContext<Parent>, private val type: Class<T>, val joinType: JoinType) :
+    QueryContext<T>() {
 
     private var targetName = resolveTableName(type)
     private val join = FromClause.JoinTable(targetName, joinType)
+
     init {
         parent.addFrom(join)
     }
@@ -41,12 +43,12 @@ class JoinContext<Parent, T>(val parent: QueryContext<Parent>, private val type:
         return this
     }
 
-    override fun <R> selectAll(): QueryContext<T> {
+    override fun selectAll(): QueryContext<T> {
         parent.addSelect(SelectClause.All(this.targetName))
         return this;
     }
 
-    override fun <R: Any> putParamValue(value: R): String {
+    override fun <R : Any> putParamValue(value: R): String {
         return parent.putParamValue(value)
     }
 
@@ -75,6 +77,10 @@ class JoinContext<Parent, T>(val parent: QueryContext<Parent>, private val type:
 
     override fun setAlias(alias: String) {
         this.targetName = alias
+    }
+
+    override fun getParamValues(): Map<String, Any> {
+        return this.parent.getParamValues()
     }
 
     override fun compile(): String {

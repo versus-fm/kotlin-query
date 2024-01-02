@@ -16,6 +16,7 @@ dependencies {
     implementation("com.github.jasync-sql:jasync-postgresql:2.2.0")
     implementation(kotlin("reflect"))
     testImplementation(kotlin("test"))
+    testImplementation("org.testcontainers:postgresql:1.19.3")
 }
 
 tasks.test {

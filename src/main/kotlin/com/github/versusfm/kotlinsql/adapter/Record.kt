@@ -14,8 +14,7 @@ class Record {
     companion object {
         fun <T> createBlueprint(type: Class<T>): Blueprint<T> {
             val ctor = type.constructors
-                .filter { it.isAnnotationPresent(RecordConstructor::class.java) }
-                .first ?: type.constructors.first()
+                .first { it.isAnnotationPresent(RecordConstructor::class.java) } ?: type.constructors.first()
             val boundColumns = ArrayList<BoundColumn>()
             val mappedColumns = HashSet<String>()
             ctor.parameters.forEachIndexed { index, parameter ->
@@ -51,17 +50,19 @@ class Record {
                     is BoundColumn.Property -> {
                         it.field.set(record, values(row, it.columnName))
                     }
+
                     is BoundColumn.ConstructorArg -> {}
                 }
             }
             return record
         }
     }
-    
+
     sealed interface BoundColumn {
         val columnName: String
         fun getColumnType(): Class<*>
-        data class ConstructorArg(override val columnName: String, val index: Int, val parameter: Parameter) : BoundColumn {
+        data class ConstructorArg(override val columnName: String, val index: Int, val parameter: Parameter) :
+            BoundColumn {
             override fun getColumnType(): Class<*> {
                 return parameter.type
             }

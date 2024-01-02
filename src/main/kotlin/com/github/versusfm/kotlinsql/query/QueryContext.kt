@@ -65,7 +65,11 @@ abstract class QueryContext<T> {
     }
 
     @OptIn(ExperimentalReflectionOnLambdas::class)
-    fun <R> join(joinType: JoinType, type: Class<R>, innerContext: ExpressionBiExtension<JoinContext<T, R>, R, Unit>): QueryContext<T> {
+    fun <R> join(
+        joinType: JoinType,
+        type: Class<R>,
+        innerContext: ExpressionBiExtension<JoinContext<T, R>, R, Unit>
+    ): QueryContext<T> {
         val joinContext = JoinContext<T, R>(this, type, joinType)
         val instance: R? = null
         with(innerContext) {
@@ -73,15 +77,19 @@ abstract class QueryContext<T> {
         }
         return this
     }
-    fun <R> innerJoin(type: Class<R>, innerContext: ExpressionBiExtension<JoinContext<T, R>, R, Unit>): QueryContext<T> {
+
+    fun <R> innerJoin(
+        type: Class<R>,
+        innerContext: ExpressionBiExtension<JoinContext<T, R>, R, Unit>
+    ): QueryContext<T> {
         return join(JoinType.Inner, type, innerContext)
     }
 
     abstract fun <R> select(selector: ExpressionExtension<T, R>): QueryContext<T>
-    abstract fun <R> selectAll(): QueryContext<T>
+    abstract fun selectAll(): QueryContext<T>
     abstract fun <R> where(selector: ExpressionExtension<T, R>): QueryContext<T>
 
-    internal abstract fun <R: Any> putParamValue(value: R): String
+    internal abstract fun <R : Any> putParamValue(value: R): String
     internal abstract fun getType(): Class<T>
     internal abstract fun getTargetName(type: Class<*>): String
 
@@ -89,14 +97,21 @@ abstract class QueryContext<T> {
     internal abstract fun addWhere(whereClause: WhereClause)
     internal abstract fun addFrom(fromClause: FromClause)
     internal abstract fun setAlias(alias: String)
+    internal abstract fun getParamValues(): Map<String, Any>
 
-    internal fun <K, L, R> resolveSelectExpression(context: QueryContext<R>, selector: ExpressionExtension<K, L>): List<SelectClause> {
+    internal fun <K, L, R> resolveSelectExpression(
+        context: QueryContext<R>,
+        selector: ExpressionExtension<K, L>
+    ): List<SelectClause> {
         val method = selector::class.java.methods.first { it.name == "invoke" }
         val lambda = LambdaExpression.parseMethod(method, selector)
         return resolveSelectExpression(context, lambda).map { SelectClause.Value(it) }
     }
 
-    internal fun <R> resolveSelectExpression(context: QueryContext<R>, expression: LambdaExpression<*>): List<ValueNode> {
+    internal fun <R> resolveSelectExpression(
+        context: QueryContext<R>,
+        expression: LambdaExpression<*>
+    ): List<ValueNode> {
         when (val body = expression.body) {
             is InvocationExpression -> return resolveColumnSelector(context, body)
             else -> TODO()
@@ -104,44 +119,70 @@ abstract class QueryContext<T> {
         TODO()
     }
 
-    internal fun <K, L, R> resolveWhereExpression(context: QueryContext<R>, selector: ExpressionExtension<K, L>): WhereClause {
+    internal fun <K, L, R> resolveWhereExpression(
+        context: QueryContext<R>,
+        selector: ExpressionExtension<K, L>
+    ): WhereClause {
         val method = selector::class.java.methods.first { it.name == "invoke" }
         val lambda = LambdaExpression.parseMethod(method, selector)
         return WhereClause.Condition(resolveWhereExpression(context, lambda))
     }
 
-    internal fun <R> resolveWhereExpression(context: QueryContext<R>, expression: LambdaExpression<*>): ConditionClause {
+    internal fun <R> resolveWhereExpression(
+        context: QueryContext<R>,
+        expression: LambdaExpression<*>
+    ): ConditionClause {
         when (val body = expression.body) {
             is InvocationExpression -> when (val target = body.target) {
                 is MemberExpression -> when (val member = target.member) {
                     is Method -> {
                         val instance = target.instance
                         val innerMethod = LambdaExpression.parseMethod(member, instance)
-                        return resolveInnerWhereExpression(context, innerMethod.body, ContextValues(body.arguments.filterIsInstance(ConstantExpression::class.java)))
+                        return resolveInnerWhereExpression(
+                            context,
+                            innerMethod.body,
+                            ContextValues(body.arguments.filterIsInstance<ConstantExpression>())
+                        )
                     }
                 }
-                is LambdaExpression<*> ->  {
-                    return resolveInnerWhereExpression(context, target.body, ContextValues(body.arguments.filterIsInstance(ConstantExpression::class.java)))
+
+                is LambdaExpression<*> -> {
+                    return resolveInnerWhereExpression(
+                        context,
+                        target.body,
+                        ContextValues(body.arguments.filterIsInstance<ConstantExpression>())
+                    )
                 }
             }
+
             is UnaryExpression -> {
                 if (body.expressionType == ExpressionType.Convert) {
                     return resolveInnerWhereExpression(context, body.first)
                 }
                 TODO()
             }
+
             else -> TODO()
         }
         TODO()
     }
 
-    internal fun <R> resolveInnerWhereExpression(context: QueryContext<R>, expression: Expression, contextValues: ContextValues = ContextValues.EMPTY): ConditionClause {
+    internal fun <R> resolveInnerWhereExpression(
+        context: QueryContext<R>,
+        expression: Expression,
+        contextValues: ContextValues = ContextValues.EMPTY
+    ): ConditionClause {
         when (expression) {
             is InvocationExpression -> when (val target = expression.target) {
                 is MemberExpression -> when (val member = target.member) {
                     is Method -> {
                         if (member.declaringClass == Intrinsics::class.java) {
-                            return resolveIntrinsic(context, expression, member, contextValues) as ConditionClause.ConditionNode
+                            return resolveIntrinsic(
+                                context,
+                                expression,
+                                member,
+                                contextValues
+                            ) as ConditionClause.ConditionNode
                         } else if (member.declaringClass == QueryStubs.Companion::class.java) {
                             return resolveConditionStubMethods(context, expression, member)
                         } else {
@@ -152,6 +193,7 @@ abstract class QueryContext<T> {
                     }
                 }
             }
+
             is BinaryExpression -> return resolveBinaryExpression(context, expression, contextValues)
             is UnaryExpression -> {
                 if (expression.expressionType == ExpressionType.Convert) {
@@ -180,7 +222,11 @@ abstract class QueryContext<T> {
         }
     }
 
-    private fun <R> resolveBinaryExpression(context: QueryContext<R>, expression: BinaryExpression, contextValues: ContextValues = ContextValues.EMPTY): ConditionClause {
+    private fun <R> resolveBinaryExpression(
+        context: QueryContext<R>,
+        expression: BinaryExpression,
+        contextValues: ContextValues = ContextValues.EMPTY
+    ): ConditionClause {
         val lhs: ValueNode = resolveValueExpression(context, expression.first, contextValues)
         val rhs: ValueNode = resolveValueExpression(context, expression.second, contextValues)
         val operator = resolveOperator(expression.expressionType)
@@ -199,8 +245,12 @@ abstract class QueryContext<T> {
         TODO()
     }
 
-    private fun <R> resolveValueExpression(context: QueryContext<R>, expression: Expression, contextValues: ContextValues = ContextValues.EMPTY): ValueNode {
-       return when (expression) {
+    private fun <R> resolveValueExpression(
+        context: QueryContext<R>,
+        expression: Expression,
+        contextValues: ContextValues = ContextValues.EMPTY
+    ): ValueNode {
+        return when (expression) {
             is ParameterExpression -> ValueNode.NamedParam(contextValues.constants.get(expression.index))
             is ConstantExpression -> ValueNode.NamedParam(expression.value)
             is InvocationExpression -> when (val target = expression.target) {
@@ -217,16 +267,25 @@ abstract class QueryContext<T> {
                             val subQuery = member.invoke(instance, *arr) as SelectContext<*>
                             subQuery.parent = context
                             return ValueNode.SubQuery(subQuery)
-                        }
-                        else {
+                        } else {
                             resolveColumnSelector(context, expression).first()
                         }
                     }
+
                     else -> resolveColumnSelector(context, expression).first()
                 }
+
                 else -> resolveColumnSelector(context, expression).first()
             }
-            is BinaryExpression -> ValueNode.BooleanCondition(resolveBinaryExpression(context, expression, contextValues))
+
+            is BinaryExpression -> ValueNode.BooleanCondition(
+                resolveBinaryExpression(
+                    context,
+                    expression,
+                    contextValues
+                )
+            )
+
             is UnaryExpression -> resolveColumnSelector(context, expression).first()
             is MemberExpression -> ValueNode.NamedParam(getInstance(context, expression))
             else -> TODO()
@@ -255,6 +314,7 @@ abstract class QueryContext<T> {
                     }
                 }
             }
+
             is ConstantExpression -> return expression.value
         }
         TODO()
@@ -270,7 +330,10 @@ abstract class QueryContext<T> {
         }
     }
 
-    private fun <R> resolveColumnSelector(context: QueryContext<R>, invocationExpression: InvocationExpression): List<ValueNode> {
+    private fun <R> resolveColumnSelector(
+        context: QueryContext<R>,
+        invocationExpression: InvocationExpression
+    ): List<ValueNode> {
         when (val target = invocationExpression.target) {
             is MemberExpression -> when (val member = target.member) {
                 is Method -> {
@@ -286,18 +349,23 @@ abstract class QueryContext<T> {
                         return resolveColumnSelector(context, innerMethod)
                     }
                 }
+
                 is Field -> {
                     val tableName = context.getTargetName(member.declaringClass)
                     val columnName = resolveColumnName(member)
                     return listOf(ValueNode.TableColumn(tableName, columnName))
                 }
             }
+
             is LambdaExpression<*> -> return resolveSelectExpression(context, target)
         }
         TODO()
     }
 
-    private fun <R> resolveColumnSelector(context: QueryContext<R>, memberExpression: MemberExpression): List<ValueNode> {
+    private fun <R> resolveColumnSelector(
+        context: QueryContext<R>,
+        memberExpression: MemberExpression
+    ): List<ValueNode> {
         when (val member = memberExpression.member) {
             is Field -> {
                 val tableName = context.getTargetName(member.declaringClass)
@@ -315,7 +383,10 @@ abstract class QueryContext<T> {
         }
     }
 
-    private fun <T, R> resolveColumnSelector(context: QueryContext<R>, expression: LambdaExpression<T>): List<ValueNode> {
+    private fun <T, R> resolveColumnSelector(
+        context: QueryContext<R>,
+        expression: LambdaExpression<T>
+    ): List<ValueNode> {
         when (val body = expression.body) {
             is InvocationExpression -> return resolveColumnSelector(context, body)
             is MemberExpression -> return resolveColumnSelector(context, body)
@@ -369,6 +440,7 @@ abstract class QueryContext<T> {
                     }
                 }
             }
+
             else -> TODO()
         }
     }
@@ -385,6 +457,7 @@ abstract class QueryContext<T> {
                 val operator = Operators.In
                 return ConditionClause.ConditionNode(rhs, lhs, operator)
             }
+
             else -> TODO()
         }
         TODO()

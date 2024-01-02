@@ -38,23 +38,24 @@ class DefaultObjectAdapter(private val typeAdapters: List<TypeAdapter<*>>) : Obj
     private fun <T> createRowMapper(type: Class<T>): (row: RowData, column: String) -> Any? {
         val blueprint = getBlueprint(type)
         val columnAdapters: Map<String, (row: RowData, column: String) -> Any?> = blueprint.columns.stream()
-                .collect(Collectors.toMap({it.columnName}) { createTypeAdapter(it) })
+            .collect(Collectors.toMap({ it.columnName }) { createTypeAdapter(it) })
 
-        return {row, column ->
+        return { row, column ->
             columnAdapters[column]?.let { it(row, column) }
         }
     }
 
     private fun createTypeAdapter(boundColumn: Record.BoundColumn): (row: RowData, column: String) -> Any? {
         val columnType = boundColumn.getColumnType()
-        val adapter = mappedTypeAdapters[columnType].orThrow { RuntimeException("Missing type adapter for $columnType") }
+        val adapter =
+            mappedTypeAdapters[columnType].orThrow { RuntimeException("Missing type adapter for $columnType") }
 
-        return {row, column ->
-            adapter.first.convert(column, row)
+        return { row, column ->
+            adapter.first().convert(column, row)
         }
     }
 
-    private fun <T: Any> T?.orThrow(supplier: () -> Throwable): T {
+    private fun <T : Any> T?.orThrow(supplier: () -> Throwable): T {
         if (this == null) {
             throw supplier()
         } else {

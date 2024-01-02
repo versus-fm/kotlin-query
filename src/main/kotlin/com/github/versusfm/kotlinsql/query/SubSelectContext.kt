@@ -1,10 +1,12 @@
 package com.github.versusfm.kotlinsql.query
 
-class SubSelectContext<T, TParent>(parent: QueryContext<TParent>, type: Class<T>, tableName: String) : SelectContext<T>(type, tableName) {
+class SubSelectContext<T, TParent>(parent: QueryContext<TParent>, type: Class<T>, tableName: String) :
+    SelectContext<T>(type, tableName) {
     init {
         this.parent = parent
     }
-    override fun <R: Any> putParamValue(value: R): String {
+
+    override fun <R : Any> putParamValue(value: R): String {
         return parent!!.putParamValue(value)
     }
 
@@ -13,5 +15,9 @@ class SubSelectContext<T, TParent>(parent: QueryContext<TParent>, type: Class<T>
             return tableName
         }
         return parent!!.getTargetName(type)
+    }
+
+    override fun getParamValues(): Map<String, Any> {
+        return parent!!.getParamValues()
     }
 }
